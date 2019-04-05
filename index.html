@@ -1,1469 +1,260 @@
-<!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+  <title>HTML5 Web Terminal</title>
+  <link href="https://fonts.googleapis.com/css?family=Inconsolata" rel="stylesheet" type="text/css" />
+  <script src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script>
+    var util = util || {};
+    util.toArray = function (list) {
+      return Array.prototype.slice.call(list || [], 0);
+    };
 
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="">
-    <meta name="author" content="">
+    var Terminal = Terminal || function (cmdLineContainer, outputContainer) {
+      window.URL = window.URL || window.webkitURL;
+      window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
 
-    <title>Sergio Hilgert</title>
-    <link rel="shortcut icon" href="img/s_transparent.png">
-    <!-- Bootstrap Core CSS -->
-    <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+      var cmdLine_ = document.querySelector(cmdLineContainer);
+      var output_ = document.querySelector(outputContainer);
 
-    <!-- Theme CSS -->
-    <link href="css/freelancer.css" rel="stylesheet">
+      const CMDS_ = [
+        'cat', 'clear', 'clock', 'date', 'echo', 'help', 'uname', 'whoami'
+      ];
 
-    <!-- Custom Fonts -->
-    <link href="vendor/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css">
-    <link href="https://fonts.googleapis.com/css?family=Montserrat:400,700" rel="stylesheet" type="text/css">
-    <link href="https://fonts.googleapis.com/css?family=Lato:400,700,400italic,700italic" rel="stylesheet" type="text/css">
+      var fs_ = null;
+      var cwd_ = null;
+      var history_ = [];
+      var histpos_ = 0;
+      var histtemp_ = 0;
 
-    <!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
-    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
-    <!--[if lt IE 9]>
-        <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
-        <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
-    <![endif]-->
+      window.addEventListener('click', function (e) {
+        cmdLine_.focus();
+      }, false);
 
+      cmdLine_.addEventListener('click', inputTextClick_, false);
+      cmdLine_.addEventListener('keydown', historyHandler_, false);
+      cmdLine_.addEventListener('keydown', processNewCommand_, false);
+
+      //
+      function inputTextClick_(e) {
+        this.value = this.value;
+      }
+
+      //
+      function historyHandler_(e) {
+        if (history_.length) {
+          if (e.keyCode == 38 || e.keyCode == 40) {
+            if (history_[histpos_]) {
+              history_[histpos_] = this.value;
+            } else {
+              histtemp_ = this.value;
+            }
+          }
+
+          if (e.keyCode == 38) { // up
+            histpos_--;
+            if (histpos_ < 0) {
+              histpos_ = 0;
+            }
+          } else if (e.keyCode == 40) { // down
+            histpos_++;
+            if (histpos_ > history_.length) {
+              histpos_ = history_.length;
+            }
+          }
+
+          if (e.keyCode == 38 || e.keyCode == 40) {
+            this.value = history_[histpos_] ? history_[histpos_] : histtemp_;
+            this.value = this.value; // Sets cursor to end of input.
+          }
+        }
+      }
+
+      //
+      function processNewCommand_(e) {
+
+        if (e.keyCode == 9) { // tab
+          e.preventDefault();
+          // Implement tab suggest.
+        } else if (e.keyCode == 13) { // enter
+          // Save shell history.
+          if (this.value) {
+            history_[history_.length] = this.value;
+            histpos_ = history_.length;
+          }
+
+          // Duplicate current input and append to output section.
+          var line = this.parentNode.parentNode.cloneNode(true);
+          line.removeAttribute('id')
+          line.classList.add('line');
+          var input = line.querySelector('input.cmdline');
+          input.autofocus = false;
+          input.readOnly = true;
+          output_.appendChild(line);
+
+          if (this.value && this.value.trim()) {
+            var args = this.value.split(' ').filter(function (val, i) {
+              return val;
+            });
+            var cmd = args[0].toLowerCase();
+            args = args.splice(1); // Remove cmd from arg list.
+          }
+          window.scrollTo(0, getDocHeight_());
+          this.value = ''; // Clear/setup line for next input.
+        }
+      }
+
+      //
+      function formatColumns_(entries) {
+        var maxName = entries[0].name;
+        util.toArray(entries).forEach(function (entry, i) {
+          if (entry.name.length > maxName.length) {
+            maxName = entry.name;
+          }
+        });
+
+        var height = entries.length <= 3 ?
+          'height: ' + (entries.length * 15) + 'px;' : '';
+
+        // 12px monospace font yields ~7px screen width.
+        var colWidth = maxName.length * 7;
+
+        return ['<div class="ls-files" style="-webkit-column-width:',
+          colWidth, 'px;', height, '">'];
+      }
+
+      //
+      function output(html) {
+        output_.insertAdjacentHTML('beforeEnd', '<p>' + html + '</p>');
+      }
+
+      // Cross-browser impl to get document's height.
+      function getDocHeight_() {
+        var d = document;
+        return Math.max(
+          Math.max(d.body.scrollHeight, d.documentElement.scrollHeight),
+          Math.max(d.body.offsetHeight, d.documentElement.offsetHeight),
+          Math.max(d.body.clientHeight, d.documentElement.clientHeight)
+        );
+      }
+
+      return {
+        init: function () {
+          output('Sérgio Hilgert Junior');
+        },
+        output: output
+      }
+    };
+
+    $(function () {
+      $('.prompt').html('> ');
+
+      // Initialize a new terminal object
+      var term = new Terminal('#input-line .cmdline', '#container output');
+      term.init();
+    });
+  </script>
+  <style>
+    ::selection {
+      background: #FF5E99;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      font-size: 11pt;
+      font-family: Inconsolata, monospace;
+      color: white;
+      background-color: black;
+    }
+
+    #container {
+      padding: .1em 1.5em 1em 1em;
+    }
+
+    #container output {
+      clear: both;
+      width: 100%;
+    }
+
+    #container output h3 {
+      margin: 0;
+    }
+
+    #container output pre {
+      margin: 0;
+    }
+
+    .input-line {
+      display: -webkit-box;
+      -webkit-box-orient: horizontal;
+      -webkit-box-align: stretch;
+      display: -moz-box;
+      -moz-box-orient: horizontal;
+      -moz-box-align: stretch;
+      display: box;
+      box-orient: horizontal;
+      box-align: stretch;
+      clear: both;
+    }
+
+    .input-line>div:nth-child(2) {
+      -webkit-box-flex: 1;
+      -moz-box-flex: 1;
+      box-flex: 1;
+    }
+
+    .prompt {
+      white-space: nowrap;
+      color: #fff;
+      margin-right: 7px;
+      display: -webkit-box;
+      -webkit-box-pack: center;
+      -webkit-box-orient: vertical;
+      display: -moz-box;
+      -moz-box-pack: center;
+      -moz-box-orient: vertical;
+      display: box;
+      box-pack: center;
+      box-orient: vertical;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      user-select: none;
+    }
+
+    .cmdline {
+      outline: none;
+      background-color: transparent;
+      margin: 0;
+      width: 100%;
+      font: inherit;
+      border: none;
+      color: inherit;
+    }
+
+    .ls-files {
+      height: 45px;
+      -webkit-column-width: 100px;
+      -moz-column-width: 100px;
+      -o-column-width: 100px;
+      column-width: 100px;
+    }
+  </style>
 </head>
 
-<body id="page-top" class="index">
-
-    <!-- Navigation -->
-    <nav id="mainNav" class="navbar navbar-default navbar-fixed-top navbar-custom">
-        <div class="container">
-            <!-- Brand and toggle get grouped for better mobile display -->
-            <div class="navbar-header page-scroll">
-                <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
-                    <span class="sr-only">Toggle navigation</span> Menu <i class="fa fa-bars"></i>
-                </button>
-                
-                <a class="navbar-brand" href="#page-top">Sergio Hilgert</a>
-            </div>
-
-            <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
-                <ul class="nav navbar-nav navbar-right">
-                    <li class="hidden">
-                        <a href="#page-top"></a>
-                    </li>
-
-                    <li class="page-scroll">
-                        <a href="#portfolio">Technical Skills</a>
-                    </li>
-
-                    <li class="page-scroll">
-                        <a href="#about">About me</a>
-                    </li>
-                </ul>
-            </div> 
-            <!-- /.navbar-collapse -->
-        </div>
-        <!-- /.container-fluid -->
-    </nav>
-
-    <!-- Header -->
-    <header>
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-12">
-                    <img class="img-circle img-responsive" src="img/profile.jpg" alt="">
-                    <div class="intro-text">
-                        <span class="name">Sergio Hilgert</span>
-                        <span class="skills">Web and Mobile Developer</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </header>
-    <section id="portfolio">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-12 text-center">
-                    <h2>Technical Skills</h2>
-                </div>
-            </div>
-            <hr style = "border-width: 0px;">
-            <div class="row">
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalJava" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/java.png" class="img-responsive" alt="" style="margin:auto;">
-                        
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalCpp" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/cpp.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalRails" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/rails.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalNodejs" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/node.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalPython" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/python.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalSwift" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/swift.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalHtml" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/html.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalCss" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/css3.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalJavascript" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/js.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalAngular" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/angular.png" class="img-responsive" alt="" style="padding: 0px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalMongodb" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/mongodb.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalPostgres" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/postgres.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalMysql" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/my_sql.png" class="img-responsive" alt="">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalOracle" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/oracle.png" class="img-responsive" alt="" style="padding: 20px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalDocker" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/docker.png" class="img-responsive" alt="" style="padding: 10px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalAndroid" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/android.jpg" class="img-responsive" alt="" style="padding: 10px;">
-                    </a>
-                </div>
-                <div class="col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                    <a href="#portfolioModalPhoenix" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/portfolio/phoenix.png" class="img-responsive" alt="" style="padding: 10px;">
-                    </a>
-                </div>
-            </div>
-        </div>
-        <hr style = "border-width: 0px;">
-        <hr style = "border-width: 0px;">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-12 text-center">
-                    <h2>Extras</h2>
-                </div>  
-            </div>
-            <hr style = "border-width: 0px;">
-            <div class = "row">
-                <div class = "col-sm-12" >
-                  <div class = "col-sm-3 col-md-3"></div>
-                    <div class = "col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                      <a href="#cpCertificates" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/competitive-programming/certifications.png" class="img-responsive" alt="" style="margin:auto; padding: 20px;">
-                      </a>
-                    </div>
-                    <div class = "col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                      <a href="#cpCodingSites" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/competitive-programming/code-sites.png" class="img-responsive" alt="" style="margin:auto;padding: 20px;">
-                      </a>
-                    </div>
-                    <div class = "col-sm-2 col-md-2 col-xs-6 portfolio-item">
-                      <a href="#cpExercises" class="portfolio-link" data-toggle="modal">
-                        <div class="caption">
-                            <div class="caption-content">
-                                <i class="fa fa-search-plus fa-2x"></i>
-                            </div>
-                        </div>
-                        <img src="img/competitive-programming/bizu.png" class="img-responsive" alt="" style="margin:auto;padding: 20px;">
-                      </a>
-                    </div>
-                  
-                </div>
-              </div>
-        </div>
-    </section>
-    
-    <section class="success" id="about">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-12 text-center">
-                    <h2>About</h2>
-                </div>
-            </div>
-            <hr style = "border-width: 0px;">
-            <div class="row">
-                <div class = "col-md-8 col-md-offset-2" style = "text-align: justify">
-                    <p class = "text-center">Hi! I am Sérgio Hilgert Junior, but you can call me Hilgert.<br></p> 
-                    <p>
-                    I am currently a student of Analysis and Systems Development at FATEC - 
-                    São José dos Campos (São José dos Campos Technological University).<br>
-                    I've started working with software development in June 2016 and I really love it.<br>
-                    I like to think of software development as a way to solve problems, that is why I don't really get attached to the technology itself, but to the solution instead, 
-                    which means I have no problem in learning new languages or new ways 
-                    to get things done.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="text-center">
-        <div class="footer-above">
-            <div class="container">
-                <div class="row">
-                    <div class="footer-col col-md-4">
-                        <h3>Location</h3>
-                        <p>São José dos Campos - SP
-                            <br>Brazil</p>
-                    </div>
-                    <div class="footer-col col-md-4">
-                        <h3>Contacts</h3>
-                        <p>hilgertfacul@gmail.com</p>
-                        <ul class="list-inline">
-                            <li>
-                                <a target="_blank" href="https://github.com/sHilgert" class="btn-social btn-outline"><i class="fa fa-fw fa-github"></i></a>
-                            </li>
-                            <li>
-                                <a target="_blank" href="https://twitter.com/hiltreg" class="btn-social btn-outline"><i class="fa fa-fw fa-twitter"></i></a>
-                            </li>
-                            <li>
-                                <a target="_blank" href="https://linkedin.com/in/sergio-hilgert" class="btn-social btn-outline"><i class="fa fa-fw fa-linkedin"></i></a>
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="footer-col col-md-4">
-                        <h3>Hobbies and Interests</h3>
-                        <p>Competitive programming, hackathons, video games, board games, guitar and skate.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Scroll to Top Button (Only visible on small and extra-small screen sizes) -->
-    <div class="scroll-top page-scroll hidden-sm hidden-xs hidden-lg hidden-md">
-        <a class="btn btn-primary" href="#page-top">
-            <i class="fa fa-chevron-up"></i>
-        </a>
+<body>
+  <div id="container">
+    <output></output>
+    <div id="input-line" class="input-line">
+      <div class="prompt"></div>
+      <div><input class="cmdline" autofocus /></div>
     </div>
-
-    <!-- Portfolio Modals -->
-    <div class="portfolio-modal modal fade" id="cpCodingSites" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Code Websites profile</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/competitive-programming/code-sites.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <br>
-                            <br>
-
-                            <div class = "col-md-12">
-                              <ul class = "">
-                                <li>
-                                  <h4><a target = "_blank" href="https://www.urionlinejudge.com.br/judge/en/profile/31601">Uri Online Judge</a></h4>
-                                </li>
-                                <li>
-                                  <h4><a target = "_blank" href="https://ucoder.com.br/user/225/">uCoder</a></h4>
-                                </li>
-                              </ul>
-                            </div>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                            
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="cpCertificates" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Certificates</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/competitive-programming/certifications.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <br>
-                            <br>
-                            <div class = "col-md-12">
-                              <ul class = "">
-                                <li>
-                                  <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FSlRrZ2RERENXVFZjd3VQT1gxNTFiV0xDOHc0/view">SemaComp 2016 - Segundo Lugar</a></h4>
-                                </li>
-                                <li>
-                                  <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FTV9HdGwtM3dEQ0U/view">Curso Intensivo de Inverno para Maratona de Programação</a></h4>
-                                </li>
-                                <li>
-                                  <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-ISZMMJFU/">11 Essential Coding Interview Questions + Coding Exercises!</a></h4>
-                                </li>
-                                <li>
-                                  <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FUmtkLWdmckFhcGl5bEZJY0VCZFNWaldHVmNB/view">ACM-ICPC 2016</a></h4>
-                                </li>
-                                
-                              </ul>
-                          </div>
-                            
-                                <div class = "col-md-12">
-                                  <hr style = "border-width: 0px;">
-                                    <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="portfolio-modal modal fade" id="cpExercises" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Standard Exercises</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/competitive-programming/bizu.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <br>
-                            <br>
-                            <div class = "col-md-12">
-                              <p>In competitive programming we are allowed to carry any type of paper. So is common the teams take some standard exercises with them that may help during the competition.<br/>
-                              You can find my standard exercises in my GitHub page, or clicking <a href= "https://github.com/sHilgert/competitive-programming/tree/master/bizu">here</a>.</p>
-                          </div>
-                                <div class = "col-md-12">
-                                  <hr style = "border-width: 0px;">
-                                    <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="portfolio-modal modal fade" id="portfolioModalJava" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Java</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/java.png" class="img-responsive img-centered" alt="">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Java</b> is the language that I have most work experience and also have experience with some frameworks.
-                               </p>
-                               <hr style = "border-width: 0px;">
-                            </div>
-                            <br/>
-                            <br/>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Certifications</h3>
-                                  <hr>
-                                  <ul class = "">
-                                      <li>
-                                          <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FR3dkanhPalRzRFU/view">Java Level 1 - Cambridge Certification Authority</a></h4>
-                                      </li>
-                                      <li>
-                                          <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FdG5mQlFEOHk2eXM/view">Java Level 2 - Cambridge Certification Authority</a></h4>
-                                      </li>
-                                  </ul>
-                                  <br/>
-                                  <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Frameworks</h3>
-                                <hr>
-                                <ul class = "">
-                                      <li>
-                                          <h4><a target = "_blank" href="https://www.primefaces.org/">PrimeFaces</a></h4>
-                                      </li>
-                                      <li>
-                                          <h4><a target = "_blank" href="https://spring.io/">Spring</a></h4>
-                                      </li>
-                                      <li>
-                                          <h4><a target = "_blank" href="http://hibernate.org/">Hibernate</a></h4>
-                                      </li>
-                                  </ul>
-                                  <br/>
-                                  <br/>
-                                  <hr style = "border-width: 0px;">
-                                  <h3>Projects</h3>
-                                  <hr>
-                                  <ul style="padding: 0;list-style-type: none;">
-                                        <li>
-                                            <h4><a target = "_blank" href="https://github.com/sHilgert/spring-data-jpa">Spring Data JPA</a></h4>
-                                        </li>
-                                        <li>
-                                            <h4><a target = "_blank" href="https://github.com/sHilgert/arteiro-bot">Arteiro Bot</a></h4>
-                                        </li>
-                                        <li>
-                                            <h4><a target = "_blank" href="https://github.com/sHilgert/webcars">WebCars</a></h4>
-                                        </li>
-                                    </ul>
-                            </div>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                              <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                          </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalCpp" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/cpp.png" class="img-responsive img-centered" alt="">
-                            </div>
-                            <div class = col-md-12>
-                                <p><b>C++</b> is one of my favorite languages, I started learning and using C++ about two years, 
-                                but I've never worked with it. The main reason I started to learn and use was beacuse of Competitive Programming.
-                                </p>
-                                <hr style = "border-width: 0px;">
-                                    
-                            </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Books</h3>
-                                <hr>
-                                <ul style="padding: 0;list-style-type: none;">
-                                  <li>
-                                    <p>Steven & Felix, <b>Competitive Programming</b>, NUS</p>      
-                                  </li>
-                                  <li>
-                                    <p>Antti Laaksonen, <b>Competitive Programmer’s Handbook</b></p>    
-                                  </li>
-                                  <li>
-                                    <p>Robert Sedgewick, <b>Algorithms in C++</b>, Addison Wesley</p>    
-                                  </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Projects</h3>
-                                <hr>
-                                <ul>
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/competitive-programming">Competitive Programming</a></h4>
-                                  </li>
-                              </ul>
-                            </div>
-                            <div class= "col-md-12">
-                              <hr style = "border-width: 0px;">
-                              <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalRails" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Ruby on Rails</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/rails.png" class="img-responsive img-centered" alt="">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>I am really new with <b>Rails</b>, but I am loving it. I do not have any work experience with it, 
-                                but I'm always trying to learn new things about Rails.</p>
-                                <hr style = "border-width: 0px;">
-                            </div>
-                            <br/>
-                            <br/>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-VH0VS1JC/">Complete Ruby on Rails Developer Course</a></h4>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Books</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>Vinícius B. Fuentes, <b>Ruby on Rails Coloque sua aplicação web nos trilhos</b>, Casa do Código</p>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Projects</h3>
-                                <hr>
-                                <ul style="padding: 0;list-style-type: none;">
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/alpha-blog">Alpha Blog</a></h4>
-                                  </li>
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/finance-tracker">Finance Tracker</a></h4>
-                                  </li>
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/photo-app">Photo App</a></h4>
-                                  </li>
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/magic-market">Magic Market</a></h4>
-                                  </li>
-                                  <li>
-                                      <h4><a target = "_blank" href="https://github.com/sHilgert/saas-project-app">SAAS Project Rails</a></h4>
-                                  </li>
-                              </ul>
-                            </div>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                              <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalNodejs" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>NodeJS</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/node.png" class="img-responsive img-centered" alt="">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>NodeJS</b> is the language I used to make my college's final paper.
-                                I don't have any work experience but I have done some projects with NodeJS and I'm a member of the <a target="_blank" href="https://www.freecodecamp.org">free code camp</a>.</p>
-                                <hr style = "border-width: 0px;">
-                                
-                           </div>
-                           <br/>
-                           <br/>
-                          <div class = "col-md-12">
-                            <hr style = "border-width: 0px;">
-                            <h3>Courses</h3>
-                            <hr>
-                            <ul class = "">
-                              <li>
-                                <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-A5T7YJWN/">Learn and Understand NodeJS</a></h4>
-                              </li>
-                            </ul>
-                            <br/>
-                           <br/>
-                            <hr style = "border-width: 0px;">
-                            <h3>Frameworks</h3>
-                            <hr>
-                            <ul style="padding: 0;list-style-type: none;">
-                              <li>
-                                <h4><a target = "_blank" href="http://expressjs.com/">Express</a></h4>
-                              </li>
-                            </ul>
-                            <br/>
-                           <br/>
-                            <hr style = "border-width: 0px;">
-                            <h3>Projects</h3>
-                            <hr>
-                            <ul style="padding: 0;list-style-type: none;">
-                              <li>
-                                <h4><a target = "_blank" href="https://github.com/sHilgert/alpha-blog">Student DriveBot</a></h4>
-                              </li>
-                              <li>
-                                <h4><a target = "_blank" href="https://github.com/sHilgert/finance-tracker">Quero EstudoBot</a></h4>
-                              </li>
-                              <li>
-                                <h4><a target = "_blank" href="https://github.com/sHilgert/photo-app">Node JS Course</a></h4>
-                              </li>
-                            </ul>
-                          </div>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalPython" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-                        <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Python</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/python.png" class="img-responsive img-centered" alt="">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>In my college I did some <b>Python</b> projects and It was awesome, 
-                                it is a really fun language to work with.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                           <br/>
-                           <br/>
-                           
-                           <div class = "col-md-12">
-                            <hr style = "border-width: 0px;">
-                            <h3>Frameworks</h3>
-                            <hr>
-                            <ul style="padding: 0;list-style-type: none;">
-                              <li>
-                                <h4><a target = "_blank" href="http://flask.pocoo.org/">Flask</a></h4>
-                                <h4><a target = "_blank" href="https://www.sqlalchemy.org/">SQLAlchemy</a></h4>
-                                
-                              </li>
-                            </ul>
-                          </div>
-
-                           <div class = "col-md-12">
-                            <hr style = "border-width: 0px;">
-                            <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                         </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalSwift" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Swift</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/swift.png" class="img-responsive img-centered" alt="">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Swift</b> is the language that I have least experience with, 
-                                but at the time I was doing the Hack a Truck course it was a pretty fun language too. I don't have any project 
-                                with Swift and the only experience I have is the course itself.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://drive.google.com/file/d/0B1NS4_nTaN8FcUQwUWppQ1dPWmoxUGZMNmpTWTZJY0RoNUs0/view">Fundamentals and practices in the Swift programming language</a></h4>
-                                    </li>
-                                </ul>     
-                            </div>
-                            <div class ="col-md-12">
-                                <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalHtml" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>HTML 5</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/html.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>I have been using <b>HTML</b> since my High School and almost all 
-                                        projects I have done had HTML. </p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalCss" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>CSS 3</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/css3.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>I only know the basics of <b>CSS</b> I started learning CSS in the same time as HTML.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalJavascript" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>JavaScript</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/js.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>I really like <b>JavaScript</b>, I have done a lot of projects using JavaScript, almost all of them, and also have worked with it.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalAngular" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>AngularJS</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/angular.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>AngularJS</b> is a awesome framework to develop a aplication front end. I have worked with it and also have done some particular projects.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-QJ0XQM8M/">Learn and Understand AngularJS</a></h4>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                 <hr style = "border-width: 0px;">
-                                  <h3>Projects</h3>
-                                  <hr>
-                                  <ul style="padding: 0;list-style-type: none;">
-                                        <li>
-                                            <h4><a target = "_blank" href="https://github.com/sHilgert/angularjs-course">AngularJS Course</a></h4>
-                                        </li>
-                                        <li>
-                                            <h4><a target = "_blank" href="https://github.com/sHilgert/webcars">WebCars</a></h4>
-                                        </li>
-                                    </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalMongodb" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Mongo DB</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/mongodb.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Mongo DB</b> is the database I used to make my Final Paper, and my favorite. I also have about a year of work experience with it.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://university.mongodb.com/course_completion/464662ad29b14cce8daa18352cd15a6a">M101P: MongoDB for Developers</a></h4>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <h3>Projects</h3>
-                                  <hr>
-                                  <ul style="padding: 0;list-style-type: none;">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/alpha-blog">Student DriveBot</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/finance-tracker">Quero EstudoBot</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/arteiro-bot">Arteiro Bot</a></h4>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalPostgres" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Postgres</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/postgres.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p>I had only used <b>Postgres</b> to my personal projects.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            <hr style = "border-width: 0px;">
-                            <div class = "col-md-12">
-                            
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalMysql" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Microsoft SQL Server</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/my_sql.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Microsoft SQL Server</b> was one of the databases I had to use in my previous job, I have some work experience with it.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalOracle" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Oracle database</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/oracle.png" class="img-responsive img-centered" alt="" style="padding: 20px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Oracle Database</b> was one of the databases I had to use in my previous job, I have some work experience with it.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Work experience</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <p>July 2016 - July 2017</p>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalDocker" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Docker</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/docker.png" class="img-responsive img-centered" alt="" style="padding: 10px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Docker</b> is really awesome, recently I have finished a Docker course, and I am loving it. Unfortunately I don't have any work experience with it.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-NGXV158E/">Docker Mastery: The Complete Toolset From a Docker Captain</a></h4>
-                                    </li>
-                                </ul>   
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="portfolio-modal modal fade" id="portfolioModalAndroid" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                             <h2>Android</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/android.jpg" class="img-responsive img-centered" alt="" style="padding: 10px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Android</b> development is one of my favorite areas, the Android's market is really big, and I like to develop applications to smartphones. I don't have any work experience, but I have done some projects using Android.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                  <h3>Projects</h3>
-                                  <hr>
-                                  <ul style="padding: 0;list-style-type: none;">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/basicphrases">Basic Phrases</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/guess-the-celebrity">Guess The Celebrity</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/braintrainer">Brain Trainer</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/whats-the-weather">Whats the Weather</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/hikers-watch">Hikers Watch</a></h4>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="portfolio-modal modal fade" id="portfolioModalPhoenix" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-content">
-            <div class="close-modal" data-dismiss="modal">
-                <div class="lr">
-                    <div class="rl">
-                    </div>
-                </div>
-            </div>
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8 col-lg-offset-2">
-                        <div class="modal-body">
-                            <h2>Phoenix</h2>
-                            <div class = "col-md-4 col-md-offset-4">
-                                <img src="img/portfolio/phoenix.png" class="img-responsive img-centered" alt="" style="padding: 10px;">
-                                
-                            </div> 
-                            <div class = "col-md-12">
-                                <p><b>Phoenix</b> is a great framework to use with <b>Elixir</b>. I have no work experience with it, but
-                                I have done a course and some projects to learn how is to code in a functional programming language.</p>
-                                <hr style = "border-width: 0px;">
-                           </div>
-                            <br/>
-                            <br/>
-                            <div class = "col-md-12">
-                              <hr style = "border-width: 0px;">
-                                <h3>Courses</h3>
-                                <hr>
-                                <ul class = "">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://www.udemy.com/certificate/UC-KYS5NDV7/">The Complete Elixir and Phoenix Bootcamp</a></h4>
-                                    </li>
-                                </ul>
-                                <br/>
-                                <br/>
-                                <hr style = "border-width: 0px;">
-                                <h3>Projects</h3>
-                                  <hr>
-                                  <ul style="padding: 0;list-style-type: none;">
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/discuss">Discuss</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/identicon">Identicon</a></h4>
-                                    </li>
-                                    <li>
-                                        <h4><a target = "_blank" href="https://github.com/sHilgert/cards-elixir">Cards</a></h4>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div class ="col-md-12">
-                                <hr style = "border-width: 0px;">
-                                <button type="button" class="btn btn-default" data-dismiss="modal"><i class="fa fa-times"></i> Close</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- jQuery -->
-    <script src="vendor/jquery/jquery.min.js"></script>
-
-    <!-- Bootstrap Core JavaScript -->
-    <script src="vendor/bootstrap/js/bootstrap.min.js"></script>
-
-    <!-- Plugin JavaScript -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-easing/1.3/jquery.easing.min.js"></script>
-
-    <!-- Contact Form JavaScript -->
-    <script src="js/jqBootstrapValidation.js"></script>
-    <script src="js/contact_me.js"></script>
-
-    <!-- Theme JavaScript -->
-    <script src="js/freelancer.js"></script>
-
+  </div>
 </body>
-
 </html>
